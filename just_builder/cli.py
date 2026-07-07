@@ -7,8 +7,10 @@ from just_builder.builder import Builder
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Build script for JustDubberMatcher with Cython compile and PyInstaller."
+        description="Build script with Cython+PyInstaller or Nuitka backends."
     )
+    parser.add_argument("--backend", type=str, choices=["pyinstaller", "nuitka"], default="pyinstaller",
+                        help="Select the build backend (default: pyinstaller)")
     parser.add_argument("--clean", action="store_true",
                         help="Delete build/, dist/ and spec files after successful compilation")
     parser.add_argument("--onefile", action="store_true", help="Package application into a single executable file")
@@ -23,11 +25,12 @@ def main():
                         help="Automatically move final SFX package into project's releases/ folder")
     parser.add_argument("--freeze", action="store_true",
                         help="Freeze (backup) original source files into a dedicated directory")
-    parser.add_argument("extra_args", nargs=argparse.REMAINDER, help="Additional arguments passed to PyInstaller")
+    parser.add_argument("extra_args", nargs=argparse.REMAINDER, help="Additional arguments passed to the backend")
 
     args = parser.parse_args()
 
     config = BuildConfig(
+        backend=args.backend,
         clean=args.clean,
         onefile=args.onefile,
         console=args.console,

@@ -4,6 +4,7 @@ from typing import List, Optional
 
 @dataclasses.dataclass
 class BuildConfig:
+    backend: str = "pyinstaller"
     clean: bool = False
     onefile: bool = False
     console: bool = False
@@ -30,7 +31,6 @@ class BuildConfig:
         r"C:\Program Files\NVIDIA\CUDNN\v8.9\bin"
     ])
 
-    # Списки исключений и импортов
     exclude_modules: List[str] = dataclasses.field(default_factory=list)
     modules_to_compile: Optional[List[str]] = None
     ignored_packages: Optional[List[str]] = None

@@ -4,13 +4,15 @@ import shutil
 import sys
 
 from just_builder.config import BuildConfig
+from just_builder.workspace import Workspace
 from just_builder.utils.ast_parser import get_third_party_imports
 from just_builder.utils.project_info import get_version_from_pyproject, get_platform_name
 from just_builder.utils.system import find_7z
 from just_builder.utils.discovery import discover_modules, get_top_level_packages
 from just_builder.steps.env import setup_dependencies, copy_cuda_cudnn_binaries
 from just_builder.steps.compiler import generate_setup_file, run_cython, clean_cython_sources
-from just_builder.steps.packager import run_pyinstaller
+from just_builder.steps.packager_pyinstaller import run_pyinstaller
+from just_builder.steps.packager_nuitka import run_nuitka
 from just_builder.steps.archiver import create_sfx_archive
 
 
@@ -41,25 +43,22 @@ class Builder:
 
         build_root = os.path.join("build", f"run_{run_suffix}")
         dist_source_dir = os.path.join(build_root, "dist_source")
-        temp_src = os.path.join(dist_source_dir, "src")
-        temp_setup = os.path.join(dist_source_dir, "setup_temp.py")
         dist_dir = os.path.join("dist", f"run_{run_suffix}")
+
+        workspace = Workspace(self.config, build_root, dist_source_dir, dist_dir)
+
+        if self.config.freeze:
+            workspace.freeze_sources(run_suffix)
 
         is_cpu = self.config.cpu
         is_gpu_full = self.config.gpu_full
-        is_gpu = self.config.gpu or (not self.config.cpu and not self.config.gpu_full)
-
+        is_gpu = self.config.gpu or (not is_cpu and not is_gpu_full)
         build_type = "cpu" if is_cpu else ("gpu-full" if is_gpu_full else "gpu")
-
-        if self.config.freeze:
-            self._freeze_sources(run_suffix)
 
         setup_dependencies(is_cpu, build_type, self.config.onnx_version)
 
         print("\n=== Setting up source directory ===")
-        if os.path.exists(dist_source_dir):
-            shutil.rmtree(dist_source_dir)
-        os.makedirs(dist_source_dir, exist_ok=True)
+        temp_src = workspace.prepare_temp_src()
 
         print("=== Extracting dependency tree ===")
         dependencies = get_third_party_imports(
@@ -69,51 +68,72 @@ class Builder:
         )
         print(f"Identified external dependencies in compiled files: {dependencies}")
 
-        print("=== Copying project files to intermediate folder ===")
-        ignore_patterns = shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyd', '*.pyo', '*.c')
-        shutil.copytree(self.config.orig_src, temp_src, ignore=ignore_patterns)
+        temp_setup = os.path.join(dist_source_dir, "setup_temp.py")
 
-        print("=== Generating setup_temp.py ===")
-        generate_setup_file(temp_setup, self.config.modules_to_compile, self.config.orig_src)
+        if self.config.backend == "pyinstaller":
+            print("=== Compiling Cython modules inside intermediate folder ===")
+            generate_setup_file(temp_setup, self.config.modules_to_compile, self.config.orig_src)
+            run_cython(temp_setup, dist_source_dir)
 
-        print("=== Compiling Cython modules inside intermediate folder ===")
-        run_cython(temp_setup, dist_source_dir)
+            print("=== Removing original python files from intermediate folder ===")
+            clean_cython_sources(temp_src, self.config.modules_to_compile, temp_setup)
+        else:
+            print(f"=== Skipping Cython compilation (Backend: {self.config.backend}) ===")
 
-        print("=== Removing original python files from intermediate folder ===")
-        clean_cython_sources(temp_src, self.config.modules_to_compile, temp_setup)
-
-        print("=== Injecting hidden imports into temporary launcher ===")
+        print("=== Preparing temporary launcher ===")
         temp_launcher = os.path.join(build_root, "launcher_patched.py")
         shutil.copy2(self.config.launcher, temp_launcher)
-        with open(temp_launcher, "a", encoding="utf-8") as f:
-            f.write("\n\nif False:\n")
-            for imp in dependencies:
-                f.write(f"    import {imp}\n")
 
-        print("=== Packaging via PyInstaller ===")
-        run_pyinstaller(
-            temp_src=temp_src,
-            launcher_path=temp_launcher,
-            executable_name=self.config.executable_name,
-            build_root=build_root,
-            dist_dir=dist_dir,
-            onefile=self.config.onefile,
-            console=self.config.console,
-            icon=self.config.icon,
-            extra_args=self.config.extra_args,
-            add_data=self.config.add_data,
-            collect_all=self.config.collect_all,
-            collect_submodules=self.config.collect_submodules,
-            hidden_imports=self.config.hidden_imports,
-            auto_dependencies=[]
-        )
+        if self.config.backend == "pyinstaller":
+            with open(temp_launcher, "a", encoding="utf-8") as f:
+                f.write("\n\nif False:\n")
+                for imp in dependencies:
+                    f.write(f"    import {imp}\n")
+
+            print("=== Packaging via PyInstaller ===")
+            run_pyinstaller(
+                temp_src=temp_src,
+                launcher_path=temp_launcher,
+                executable_name=self.config.executable_name,
+                build_root=build_root,
+                dist_dir=dist_dir,
+                onefile=self.config.onefile,
+                console=self.config.console,
+                icon=self.config.icon,
+                extra_args=self.config.extra_args,
+                add_data=self.config.add_data,
+                collect_all=self.config.collect_all,
+                collect_submodules=self.config.collect_submodules,
+                hidden_imports=self.config.hidden_imports,
+                auto_dependencies=dependencies
+            )
+        elif self.config.backend == "nuitka":
+            print("=== Packaging via Nuitka ===")
+            run_nuitka(
+                temp_src=temp_src,
+                launcher_path=temp_launcher,
+                executable_name=self.config.executable_name,
+                build_root=build_root,
+                dist_dir=dist_dir,
+                onefile=self.config.onefile,
+                console=self.config.console,
+                icon=self.config.icon,
+                extra_args=self.config.extra_args,
+                add_data=self.config.add_data,
+                collect_all=self.config.collect_all,
+                collect_submodules=self.config.collect_submodules,
+                hidden_imports=self.config.hidden_imports,
+                auto_dependencies=dependencies
+            )
+        else:
+            raise ValueError(f"Unknown packaging backend: {self.config.backend}")
 
         version = get_version_from_pyproject()
         full_version = f"{version}+{timestamp}"
         target_dir = os.path.join(dist_dir, f"{self.config.project_name}-{full_version}")
 
         print(f"=== Structuring final dist directory for version {full_version} ===")
-        self._structure_dist_directory(dist_dir, target_dir)
+        workspace.structure_dist_directory(target_dir)
 
         if is_gpu_full:
             copy_cuda_cudnn_binaries(target_dir, self.config.cuda_paths, self.config.cudnn_paths)
@@ -143,102 +163,9 @@ class Builder:
             print("SFX packaging step has been skipped.")
 
         if self.config.release and sfx_generated:
-            self._move_to_release(archive_path, archive_name)
+            workspace.move_to_release(archive_path, archive_name)
 
         if self.config.clean:
-            self._cleanup(build_root, dist_dir, target_dir, archive_name, sfx_generated)
+            workspace.cleanup(target_dir, archive_name, sfx_generated)
 
         print("\n=== Compilation and build successfully finalized ===")
-
-    def _freeze_sources(self, run_suffix: str) -> None:
-        frozen_dir = os.path.join("build", f"frozen_src_{run_suffix}")
-        print(f"\n=== Freezing original sources to {frozen_dir} ===")
-        try:
-            os.makedirs(frozen_dir, exist_ok=True)
-            shutil.copytree(
-                self.config.orig_src,
-                os.path.join(frozen_dir, "src"),
-                ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyd', '*.pyo', '*.c')
-            )
-            if os.path.exists(self.config.launcher):
-                shutil.copy2(self.config.launcher, os.path.join(frozen_dir, self.config.launcher))
-            if os.path.exists("pyproject.toml"):
-                shutil.copy2("pyproject.toml", os.path.join(frozen_dir, "pyproject.toml"))
-            print(f"Sources successfully frozen at: {frozen_dir}")
-        except Exception as e:
-            print(f"Warning: Failed to freeze source files: {e}")
-
-    def _structure_dist_directory(self, dist_dir: str, target_dir: str) -> None:
-        if os.path.exists(target_dir):
-            try:
-                shutil.rmtree(target_dir)
-            except Exception as e:
-                raise RuntimeError(f"Error cleaning target directory {target_dir}: {e}")
-
-        exe_name = f"{self.config.executable_name}.exe" if sys.platform == "win32" else self.config.executable_name
-
-        if self.config.onefile:
-            source_exe = os.path.join(dist_dir, exe_name)
-            if os.path.exists(source_exe):
-                os.makedirs(target_dir, exist_ok=True)
-                shutil.move(source_exe, os.path.join(target_dir, exe_name))
-                print(f"Moved executable: {source_exe} -> {os.path.join(target_dir, exe_name)}")
-            else:
-                raise RuntimeError(f"Target executable {source_exe} was not found.")
-        else:
-            source_folder = os.path.join(dist_dir, self.config.executable_name)
-            if os.path.exists(source_folder):
-                shutil.move(source_folder, target_dir)
-                print(f"Moved output folder: {source_folder} -> {target_dir}")
-            else:
-                raise RuntimeError(f"Source directory {source_folder} was not found.")
-
-        additional_files = ["LICENSE", "LICENSE.txt", "LICENSE.md", "README.md", "README.txt"]
-        for filename in additional_files:
-            if os.path.exists(filename):
-                try:
-                    shutil.copy(filename, target_dir)
-                    print(f"Copied: {filename} -> {target_dir}")
-                except Exception as e:
-                    print(f"Warning: Failed to copy {filename}: {e}")
-
-    def _move_to_release(self, archive_path: str, archive_name: str) -> None:
-        releases_dir = "releases"
-        os.makedirs(releases_dir, exist_ok=True)
-        release_path = os.path.join(releases_dir, archive_name)
-        if os.path.exists(archive_path):
-            try:
-                shutil.move(archive_path, release_path)
-                print(f"SFX archive successfully moved to release directory: {release_path}")
-            except Exception as e:
-                print(f"Error: Failed to move package to releases/ directory: {e}")
-
-    def _cleanup(self, build_root: str, dist_dir: str, target_dir: str, archive_name: str, sfx_generated: bool) -> None:
-        print("\n=== Executing Post-Compilation Cleanup ===")
-        if os.path.exists(build_root):
-            try:
-                shutil.rmtree(build_root)
-                print(f"Removed intermediate build directory: {build_root}/")
-            except Exception as e:
-                print(f"Warning: Failed to clear directory {build_root}/: {e}")
-
-        archive_released = self.config.release and os.path.exists(os.path.join("releases", archive_name))
-        archive_local = os.path.exists(os.path.join(dist_dir, archive_name))
-
-        if sfx_generated and (archive_local or archive_released):
-            if self.config.release:
-                if os.path.exists(dist_dir):
-                    try:
-                        shutil.rmtree(dist_dir)
-                        print(f"Removed temporary dist directory: {dist_dir}/")
-                    except Exception as e:
-                        print(f"Warning: Failed to clear directory {dist_dir}/: {e}")
-            else:
-                if os.path.exists(target_dir):
-                    try:
-                        shutil.rmtree(target_dir)
-                        print(f"Removed unpacked target directory: {target_dir}/")
-                    except Exception as e:
-                        print(f"Warning: Failed to clear directory {target_dir}/: {e}")
-        else:
-            print("SFX archive was not finalized. Preserving compiled package folder within process dist/.")

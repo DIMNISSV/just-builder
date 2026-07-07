@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "just-builder"
-version = "0.2.0"
+version = "0.3.0"
 description = ""
 authors = ["Dmitriy <dimnissv@yandex.kz>"]
 readme = "README.md"
@@ -10,6 +10,7 @@ packages = [{ include = "just_builder" }]
 python = ">=3.12,<3.16"
 cython = "^3.2.8"
 pyinstaller = "^6.21.0"
+nuitka = "^4.1.3"
 
 
 [tool.poetry.scripts]
