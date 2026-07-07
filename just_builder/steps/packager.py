@@ -7,6 +7,7 @@ from typing import List
 def run_pyinstaller(
         temp_src: str,
         launcher_path: str,
+        executable_name: str,
         build_root: str,
         dist_dir: str,
         onefile: bool,
@@ -35,7 +36,7 @@ def run_pyinstaller(
         pyinstaller_cmd.extend(["--icon", os.path.abspath(icon)])
 
     pyinstaller_cmd.extend([
-        "--name", "launcher",
+        "--name", executable_name,
         "--paths", os.path.abspath(temp_src),
         "--workpath", os.path.abspath(os.path.join(build_root, "pyi_work")),
         "--specpath", os.path.abspath(build_root),

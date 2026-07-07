@@ -2,10 +2,11 @@ import os
 import shutil
 import subprocess
 import sys
+from typing import List
 
 
-def setup_dependencies(cpu_build: bool, build_type: str) -> None:
-    target_package = "onnxruntime==1.27.0" if cpu_build else "onnxruntime-gpu==1.27.0"
+def setup_dependencies(cpu_build: bool, build_type: str, onnx_version: str) -> None:
+    target_package = f"onnxruntime=={onnx_version}" if cpu_build else f"onnxruntime-gpu=={onnx_version}"
     to_uninstall = "onnxruntime-gpu" if cpu_build else "onnxruntime"
 
     print(f"\n=== Dynamic Dependency Setup for {build_type.upper()} ===")
@@ -21,16 +22,8 @@ def setup_dependencies(cpu_build: bool, build_type: str) -> None:
         print(f"Dependency {target_package} configured successfully.")
 
 
-def copy_cuda_cudnn_binaries(target_dir: str) -> None:
+def copy_cuda_cudnn_binaries(target_dir: str, cuda_paths: List[str], cudnn_paths: List[str]) -> None:
     print("\n=== Copying CUDA and cuDNN libraries to target folder ===")
-    cuda_paths = [
-        r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin\x64",
-        r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin"
-    ]
-    cudnn_paths = [
-        r"C:\Program Files\NVIDIA\CUDNN\v9.24\bin\13.3\x64"
-    ]
-
     copied_files_count = 0
 
     cuda_src_dir = next((path for path in cuda_paths if os.path.exists(path)), None)

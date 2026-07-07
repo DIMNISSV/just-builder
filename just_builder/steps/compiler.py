@@ -4,11 +4,11 @@ import sys
 from typing import List
 
 
-def generate_setup_file(setup_path: str, modules_to_compile: List[str]) -> None:
+def generate_setup_file(setup_path: str, modules_to_compile: List[str], orig_src: str = "src") -> None:
     extensions_code = []
     for mod in modules_to_compile:
         path_parts = mod.split('.')
-        src_path = f"src/{'/'.join(path_parts)}.py"
+        src_path = f"{orig_src}/{'/'.join(path_parts)}.py"
         extensions_code.append(f'    Extension("{mod}", ["{src_path}"]),')
 
     extensions_str = "\n".join(extensions_code)
@@ -20,7 +20,7 @@ extensions = [
 ]
 
 setup(
-    package_dir={{"": "src"}},
+    package_dir={{"": "{orig_src}"}},
     ext_modules=cythonize(extensions, compiler_directives={{'language_level': "3"}}),
 )
 """

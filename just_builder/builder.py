@@ -54,7 +54,7 @@ class Builder:
         if self.config.freeze:
             self._freeze_sources(run_suffix)
 
-        setup_dependencies(is_cpu, build_type)
+        setup_dependencies(is_cpu, build_type, self.config.onnx_version)
 
         print("\n=== Setting up source directory ===")
         if os.path.exists(dist_source_dir):
@@ -74,7 +74,7 @@ class Builder:
         shutil.copytree(self.config.orig_src, temp_src, ignore=ignore_patterns)
 
         print("=== Generating setup_temp.py ===")
-        generate_setup_file(temp_setup, self.config.modules_to_compile)
+        generate_setup_file(temp_setup, self.config.modules_to_compile, self.config.orig_src)
 
         print("=== Compiling Cython modules inside intermediate folder ===")
         run_cython(temp_setup, dist_source_dir)
@@ -82,10 +82,19 @@ class Builder:
         print("=== Removing original python files from intermediate folder ===")
         clean_cython_sources(temp_src, self.config.modules_to_compile, temp_setup)
 
+        print("=== Injecting hidden imports into temporary launcher ===")
+        temp_launcher = os.path.join(build_root, "launcher_patched.py")
+        shutil.copy2(self.config.launcher, temp_launcher)
+        with open(temp_launcher, "a", encoding="utf-8") as f:
+            f.write("\n\nif False:\n")
+            for imp in dependencies:
+                f.write(f"    import {imp}\n")
+
         print("=== Packaging via PyInstaller ===")
         run_pyinstaller(
             temp_src=temp_src,
-            launcher_path=self.config.launcher,
+            launcher_path=temp_launcher,
+            executable_name=self.config.executable_name,
             build_root=build_root,
             dist_dir=dist_dir,
             onefile=self.config.onefile,
@@ -96,21 +105,21 @@ class Builder:
             collect_all=self.config.collect_all,
             collect_submodules=self.config.collect_submodules,
             hidden_imports=self.config.hidden_imports,
-            auto_dependencies=dependencies
+            auto_dependencies=[]
         )
 
         version = get_version_from_pyproject()
         full_version = f"{version}+{timestamp}"
-        target_dir = os.path.join(dist_dir, f"just-dubber-matcher-{full_version}")
+        target_dir = os.path.join(dist_dir, f"{self.config.project_name}-{full_version}")
 
         print(f"=== Structuring final dist directory for version {full_version} ===")
         self._structure_dist_directory(dist_dir, target_dir)
 
         if is_gpu_full:
-            copy_cuda_cudnn_binaries(target_dir)
+            copy_cuda_cudnn_binaries(target_dir, self.config.cuda_paths, self.config.cudnn_paths)
 
         platform_name = get_platform_name()
-        archive_name = f"just-dubber-matcher-{full_version}-{platform_name}-{build_type}.exe"
+        archive_name = f"{self.config.project_name}-{full_version}-{platform_name}-{build_type}.exe"
         archive_path = os.path.join(dist_dir, archive_name)
 
         if os.path.exists(archive_path):
@@ -124,7 +133,7 @@ class Builder:
         if seven_zip_path:
             print(f"\n=== Creating Self-Extracting SFX Archive ({archive_name}) ===")
             sfx_generated = create_sfx_archive(
-                seven_zip_path, archive_name, f"just-dubber-matcher-{full_version}",
+                seven_zip_path, archive_name, f"{self.config.project_name}-{full_version}",
                 dist_dir, self.config.password
             )
             if sfx_generated:
@@ -166,7 +175,7 @@ class Builder:
             except Exception as e:
                 raise RuntimeError(f"Error cleaning target directory {target_dir}: {e}")
 
-        exe_name = "launcher.exe" if sys.platform == "win32" else "launcher"
+        exe_name = f"{self.config.executable_name}.exe" if sys.platform == "win32" else self.config.executable_name
 
         if self.config.onefile:
             source_exe = os.path.join(dist_dir, exe_name)
@@ -177,7 +186,7 @@ class Builder:
             else:
                 raise RuntimeError(f"Target executable {source_exe} was not found.")
         else:
-            source_folder = os.path.join(dist_dir, "launcher")
+            source_folder = os.path.join(dist_dir, self.config.executable_name)
             if os.path.exists(source_folder):
                 shutil.move(source_folder, target_dir)
                 print(f"Moved output folder: {source_folder} -> {target_dir}")
