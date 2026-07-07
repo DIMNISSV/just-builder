@@ -22,3 +22,8 @@ class BuildConfig:
     exclude_modules: List[str] = dataclasses.field(default_factory=list)
     modules_to_compile: Optional[List[str]] = None
     ignored_packages: Optional[List[str]] = None
+
+    add_data: List[str] = dataclasses.field(default_factory=list)
+    collect_all: List[str] = dataclasses.field(default_factory=list)
+    collect_submodules: List[str] = dataclasses.field(default_factory=list)
+    hidden_imports: List[str] = dataclasses.field(default_factory=list)

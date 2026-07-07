@@ -42,7 +42,6 @@ class Builder:
         build_root = os.path.join("build", f"run_{run_suffix}")
         dist_source_dir = os.path.join(build_root, "dist_source")
         temp_src = os.path.join(dist_source_dir, "src")
-        temp_launcher = os.path.join(dist_source_dir, "launcher.py")
         temp_setup = os.path.join(dist_source_dir, "setup_temp.py")
         dist_dir = os.path.join("dist", f"run_{run_suffix}")
 
@@ -73,9 +72,6 @@ class Builder:
         print("=== Copying project files to intermediate folder ===")
         ignore_patterns = shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyd', '*.pyo', '*.c')
         shutil.copytree(self.config.orig_src, temp_src, ignore=ignore_patterns)
-        shutil.copyfile(self.config.launcher, temp_launcher)
-
-        self._inject_dummy_imports(temp_launcher, dependencies)
 
         print("=== Generating setup_temp.py ===")
         generate_setup_file(temp_setup, self.config.modules_to_compile)
@@ -88,8 +84,19 @@ class Builder:
 
         print("=== Packaging via PyInstaller ===")
         run_pyinstaller(
-            temp_src, temp_launcher, build_root, dist_dir,
-            self.config.onefile, self.config.console, self.config.icon, self.config.extra_args
+            temp_src=temp_src,
+            launcher_path=self.config.launcher,
+            build_root=build_root,
+            dist_dir=dist_dir,
+            onefile=self.config.onefile,
+            console=self.config.console,
+            icon=self.config.icon,
+            extra_args=self.config.extra_args,
+            add_data=self.config.add_data,
+            collect_all=self.config.collect_all,
+            collect_submodules=self.config.collect_submodules,
+            hidden_imports=self.config.hidden_imports,
+            auto_dependencies=dependencies
         )
 
         version = get_version_from_pyproject()
@@ -151,17 +158,6 @@ class Builder:
             print(f"Sources successfully frozen at: {frozen_dir}")
         except Exception as e:
             print(f"Warning: Failed to freeze source files: {e}")
-
-    def _inject_dummy_imports(self, launcher_path: str, dependencies: list) -> None:
-        dummy_imports_lines = [
-            "\n# Dynamic dummy imports for PyInstaller analyzer",
-            "if False:"
-        ]
-        for dep in dependencies:
-            dummy_imports_lines.append(f"    import {dep}")
-        dummy_imports = "\n".join(dummy_imports_lines) + "\n"
-        with open(launcher_path, "a", encoding="utf-8") as f:
-            f.write(dummy_imports)
 
     def _structure_dist_directory(self, dist_dir: str, target_dir: str) -> None:
         if os.path.exists(target_dir):
