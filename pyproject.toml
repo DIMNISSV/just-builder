@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "just-builder"
+version = "0.1.0"
+description = ""
+authors = ["Dmitriy <dimnissv@yandex.kz>"]
+readme = "README.md"
+packages = [{ include = "just_builder" }]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.16"
+cython = "^3.2.8"
+pyinstaller = "^6.21.0"
+
+
+[tool.poetry.scripts]
+just-builder = "just_builder.cli:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
