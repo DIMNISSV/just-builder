@@ -3,6 +3,7 @@ import subprocess
 import sys
 import shutil
 from typing import List
+from just_builder.utils.discovery import is_module_available
 
 
 def run_nuitka(
@@ -42,11 +43,17 @@ def run_nuitka(
 
     all_hidden = set(hidden_imports + auto_dependencies)
     for imp in all_hidden:
-        cmd.append(f"--include-module={imp}")
+        if is_module_available(imp):
+            cmd.append(f"--include-module={imp}")
+        else:
+            print(f"Warning: Skipping unavailable module '{imp}' from Nuitka --include-module")
 
     all_pkgs = set(collect_all + collect_submodules)
     for pkg in all_pkgs:
-        cmd.append(f"--include-package={pkg}")
+        if is_module_available(pkg):
+            cmd.append(f"--include-package={pkg}")
+        else:
+            print(f"Warning: Skipping unavailable package '{pkg}' from Nuitka --include-package")
 
     for data in add_data:
         separator = os.pathsep if os.pathsep in data else (";" if sys.platform == "win32" else ":")

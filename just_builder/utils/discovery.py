@@ -1,5 +1,19 @@
 import os
+import sys
+import importlib.util
 from typing import List
+
+
+def is_module_available(name: str) -> bool:
+    top_level = name.split('.')[0]
+    if top_level in sys.builtin_module_names:
+        return True
+    if hasattr(sys, "stdlib_module_names") and top_level in sys.stdlib_module_names:
+        return True
+    try:
+        return importlib.util.find_spec(top_level) is not None
+    except Exception:
+        return False
 
 
 def discover_modules(src_dir: str, exclude_list: List[str]) -> List[str]:

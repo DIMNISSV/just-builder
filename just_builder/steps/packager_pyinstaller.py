@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 from typing import List
+from just_builder.utils.discovery import is_module_available
 
 
 def run_pyinstaller(
@@ -43,17 +44,18 @@ def run_pyinstaller(
         "--distpath", os.path.abspath(dist_dir),
     ])
 
-    for dep in auto_dependencies:
-        pyinstaller_cmd.extend(["--hidden-import", dep])
-
-    for imp in hidden_imports:
-        pyinstaller_cmd.extend(["--hidden-import", imp])
+    all_hidden = set(hidden_imports + auto_dependencies)
+    for imp in all_hidden:
+        if is_module_available(imp):
+            pyinstaller_cmd.extend(["--hidden-import", imp])
 
     for ca in collect_all:
-        pyinstaller_cmd.extend(["--collect-all", ca])
+        if is_module_available(ca):
+            pyinstaller_cmd.extend(["--collect-all", ca])
 
     for csub in collect_submodules:
-        pyinstaller_cmd.extend(["--collect-submodules", csub])
+        if is_module_available(csub):
+            pyinstaller_cmd.extend(["--collect-submodules", csub])
 
     for data in add_data:
         separator = os.pathsep if os.pathsep in data else (";" if sys.platform == "win32" else ":")

@@ -1,6 +1,9 @@
 import ast
 import os
+import sys
 from typing import List
+
+from just_builder.utils.discovery import is_module_available
 
 
 def get_third_party_imports(modules_list: List[str], orig_src: str, ignored_packages: List[str]) -> List[str]:
@@ -25,10 +28,19 @@ def get_third_party_imports(modules_list: List[str], orig_src: str, ignored_pack
                 print(f"Warning: Failed to parse imports from {py_file}: {e}")
 
     ignored = set(ignored_packages)
+
+    std_and_builtins = set(sys.builtin_module_names)
+    if hasattr(sys, "stdlib_module_names"):
+        std_and_builtins.update(sys.stdlib_module_names)
+
     filtered = set()
     for imp in discovered_imports:
         top_pkg = imp.split('.')[0]
-        if top_pkg not in ignored:
+        if top_pkg in ignored or top_pkg in std_and_builtins:
+            continue
+        if is_module_available(top_pkg):
             filtered.add(imp)
+        else:
+            print(f"Warning: Skipping unavailable dependency discovered in AST parser: {imp}")
 
     return sorted(list(filtered))
