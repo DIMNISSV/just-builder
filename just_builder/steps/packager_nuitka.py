@@ -41,6 +41,12 @@ def run_nuitka(
 
     cmd.append(f"--output-dir={os.path.abspath(build_root)}")
 
+    if is_module_available("PySide6"):
+        cmd.append("--enable-plugin=pyside6")
+
+    if is_module_available("numba"):
+        cmd.append("--module-parameter=numba-disable-jit=no")
+
     all_hidden = set(hidden_imports + auto_dependencies)
     for imp in all_hidden:
         if is_module_available(imp):
